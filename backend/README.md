@@ -53,3 +53,14 @@ A resposta pode conter transcrição, idioma, título, canal e segmentos tempori
 3. Adicionar análise automática da transcrição e geração de relatório.
 4. Adicionar extração de quadros somente por fonte de mídia autorizada.
 5. Integrar o endpoint a uma interface/fluxo para o usuário colar apenas o link.
+
+## Deploy gratuito no Render (teste)
+1. Crie/acesse uma conta em https://render.com.
+2. Escolha New > Web Service e conecte o GitHub.
+3. Selecione o repositório `diegoms1806-coder/youtube-video-intelligence-pro`.
+4. Em Root Directory, informe `backend`.
+5. Escolha Docker como runtime e o plano Free.
+6. Em Environment, adicione `APIFY_TOKEN` com o token da Apify. Não o coloque no código, no GitHub ou em mensagens.
+7. Crie o serviço e aguarde o deploy. Teste `https://SEU-SERVICO.onrender.com/health`.
+
+O plano gratuito é adequado para prova de conceito, não produção: o serviço dorme após 15 minutos sem tráfego e pode levar cerca de um minuto para acordar. O sistema de arquivos é temporário. Não adicione cartão nem habilite cobranças automáticas; acompanhe os limites no painel.

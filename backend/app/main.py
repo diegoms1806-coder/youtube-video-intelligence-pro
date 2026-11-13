@@ -93,6 +93,86 @@ async def youtube_transcript(payload: TranscriptRequest):
     result = await get_apify_transcript(url, payload.timestamps)
     return {"url": url, "transcript": result}
 
+
+class YouTubeAnalysisRequest(BaseModel):
+    url: HttpUrl
+    timestamps: bool = False
+
+
+@app.post("/v1/youtube/analyze")
+async def youtube_analyze(payload: YouTubeAnalysisRequest):
+    """Extract an accessible transcript and analyze it with a low-cost OpenAI model."""
+    if not os.getenv("OPENAI_API_KEY"):
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY não configurada. Adicione-a nos Environment Variables do Render.")
+    url = str(payload.url)
+    video_id = extract_video_id(url)
+    metadata = await get_oembed(url)
+    transcript_result = await get_apify_transcript(url, payload.timestamps)
+    if transcript_result.get("status") != "ok" or not transcript_result.get("text"):
+        raise HTTPException(status_code=422, detail={
+            "message": "Não foi possível obter uma transcrição para este vídeo.",
+            "transcript": transcript_result,
+            "metadata": metadata,
+        })
+
+    # Keep the request bounded to control API cost; never imply omitted portions were analyzed.
+    transcript_text = transcript_result["text"]
+    max_chars = int(os.getenv("MAX_ANALYSIS_CHARS", "60000"))
+    analyzed_text = transcript_text[:max_chars]
+    truncated = len(transcript_text) > len(analyzed_text)
+    model = os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o-mini")
+    system_prompt = (
+        "Você é um analista audiovisual e pesquisador rigoroso. Analise SOMENTE o conteúdo "
+        "da transcrição fornecida. Não invente imagens, sons, fatos externos, fontes ou citações. "
+        "Separe claramente: (1) o que o apresentador afirma, (2) interpretações/inferências, "
+        "(3) pontos que exigem verificação externa. Não trate alegações como fatos comprovados. "
+        "Se a transcrição estiver incompleta ou truncada, declare essa limitação. "
+        "Responda em português brasileiro, com títulos e linguagem clara."
+    )
+    user_prompt = (
+        f"URL: {url}\\nTítulo: {metadata.get('title') or 'não disponível'}\\n"
+        f"Canal: {metadata.get('author_name') or 'não disponível'}\\n"
+        f"Transcrição (pode estar limitada a {max_chars} caracteres):\\n"
+        f"{analyzed_text}\\n\\n"
+        "Produza: resumo executivo; tema e objetivo; tópicos principais; argumentos e evidências "
+        "citadas pelo próprio vídeo; afirmações factuais que precisam de checagem; possíveis "
+        "falhas lógicas/retóricas; conclusões; perguntas em aberto. Para cada afirmação não "
+        "verificada, indique 'não verificada nesta etapa'. Não faça fact-check externo."
+    )
+    try:
+        client = OpenAI()
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1800,
+        )
+        report = completion.choices[0].message.content or ""
+        usage = completion.usage
+        return {
+            "status": "analyzed",
+            "video_id": video_id,
+            "url": url,
+            "metadata": metadata,
+            "transcript_source": transcript_result.get("source"),
+            "transcript_characters_total": len(transcript_text),
+            "transcript_characters_analyzed": len(analyzed_text),
+            "transcript_truncated": truncated,
+            "analysis_model": model,
+            "analysis": report,
+            "usage": {
+                "prompt_tokens": usage.prompt_tokens if usage else None,
+                "completion_tokens": usage.completion_tokens if usage else None,
+                "total_tokens": usage.total_tokens if usage else None,
+            },
+            "scope_note": "Análise baseada apenas na transcrição. Imagens, áudio original e verificação externa ainda não foram analisados.",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha na análise com IA: {type(exc).__name__}") from exc
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "youtube-video-intelligence-pro-api"}

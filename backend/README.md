@@ -1,11 +1,19 @@
 # Backend MVP
 
-API inicial do YouTube Video Intelligence Pro. Ainda não é uma implantação pública.
+API inicial do YouTube Video Intelligence Pro.
 
 ## Recursos
-- `GET /health`: verificação de saúde.
-- `POST /v1/analyze`: valida URL do YouTube, extrai ID e tenta obter metadados públicos via oEmbed. Aceita transcrição fornecida no JSON.
-- `POST /v1/transcribe`: transcreve arquivo de áudio/vídeo enviado pelo usuário usando a API de transcrição da OpenAI.
+- GET /health: verificação de saúde.
+- POST /v1/analyze: valida URL, tenta metadados públicos via oEmbed e aceita transcrição enviada no JSON.
+- POST /v1/youtube/transcript: busca legendas/transcrição pública por meio do Actor Meridian Labs na Apify, incluindo segmentos temporizados.
+- POST /v1/transcribe: transcreve arquivo de áudio/vídeo autorizado enviado pelo usuário usando a API da OpenAI.
+
+## Orçamento econômico
+- Apify oferece plano Free com US$ 5 mensais em créditos de plataforma; o Actor de transcrição anuncia US$ 3 por 1.000 transcrições entregues (US$ 0,003 por vídeo com legenda).
+- Vídeos sem legenda, indisponíveis ou com falha não são cobrados pelo Actor, conforme a página do fornecedor.
+- Não assine o plano Starter da Apify (US$ 19/mês) para este protótipo. Use a conta gratuita e configure limites de gastos.
+- A transcrição OpenAI é opcional; não é acionada pela rota de transcrição do YouTube. O modelo gpt-transcribe custa US$ 0,0045 por minuto de áudio quando usado para arquivos enviados.
+- Hospedagem gratuita pode ser usada para teste, mas pode dormir, ter limites e não garantir disponibilidade. Não há implantação pública configurada ainda.
 
 ## Execução local
 Requer Python 3.12+.
@@ -15,24 +23,33 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
-export OPENAI_API_KEY="sua-chave-no-ambiente"
+export APIFY_TOKEN=APIFY_TOKEN_VALUE
 uvicorn app.main:app --reload
 ```
 
-Abra `http://localhost:8000/docs` para testar a API.
+Abra http://localhost:8000/docs para testar.
+
+## Testar a transcrição
+Envie JSON para POST /v1/youtube/transcript:
+
+```json
+{"url":"https://youtu.be/VIDEO_ID","timestamps":true}
+```
+
+A resposta pode conter transcrição, idioma, título, canal e segmentos temporizados. Se o vídeo não tiver legendas acessíveis, a API retorna o status correspondente. Esta rota não obtém o áudio bruto e não consegue transcrever vídeos sem legendas.
 
 ## Limites e segurança
-- Upload máximo: 25 MB por arquivo nesta versão.
+- Upload máximo de mídia: 25 MB por arquivo.
 - Formatos aceitos: mp3, mp4, mpeg, mpga, m4a, wav e webm.
 - Arquivos temporários são apagados após a tentativa de transcrição.
-- A chave da OpenAI deve ficar apenas no ambiente do servidor; nunca a publique no GitHub nem a envie no chat.
-- Envie somente mídia que você possui ou tem autorização para processar.
-- Esta versão não baixa vídeos do YouTube, não acessa conteúdo privado e não contorna restrições.
+- APIFY_TOKEN e OPENAI_API_KEY devem ficar apenas em variáveis de ambiente/segredos do servidor; nunca publique tokens no GitHub nem os envie no chat.
+- O Actor consulta vídeos públicos e legendas disponibilizadas; respeite direitos autorais e os termos das plataformas.
+- Esta versão não baixa vídeo/áudio do YouTube, não acessa conteúdo privado, não contorna autenticação, restrições ou mecanismos de proteção.
 - oEmbed pode retornar metadados básicos, mas não fornece áudio, vídeo ou transcrição.
-- A rota de transcrição usa o modelo configurado em `OPENAI_TRANSCRIPTION_MODEL` (padrão: `gpt-transcribe`).
 
 ## Próximas etapas
-1. Hospedar a API com HTTPS e configurar os segredos no provedor.
-2. Implementar OAuth do YouTube para recursos que exigem autorização, respeitando escopos e propriedade/permissões.
-3. Adicionar fila de tarefas, armazenamento temporário controlado, extração de quadros com FFmpeg e geração de relatório.
-4. Integrar a API ao fluxo que recebe links do YouTube no ChatGPT.
+1. Configurar conta gratuita da Apify e guardar o token como segredo no servidor.
+2. Hospedar a API com HTTPS.
+3. Adicionar análise automática da transcrição e geração de relatório.
+4. Adicionar extração de quadros somente por fonte de mídia autorizada.
+5. Integrar o endpoint a uma interface/fluxo para o usuário colar apenas o link.
